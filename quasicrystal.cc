@@ -20,6 +20,7 @@ DEFINE_double(freq, 1.0 / 5.0, "Frequency of waves.");
 DEFINE_bool(view_mode, true,
             "Set to true to run visualization, set to false to "
             "run benchmark");
+DEFINE_int32(benchmark_steps, 10, "Number of steps to take in benchmark");
 
 static void ComputeWave(float* img, int step) {
   const float freq = static_cast<float>(FLAGS_freq);
@@ -60,7 +61,7 @@ class WaveWindow : public util::Window {
         step_(0) {
   }
   virtual ~WaveWindow() {
-    delete pixels_;
+    delete[] pixels_;
   }
 
  protected:
@@ -94,12 +95,21 @@ class WaveWindow : public util::Window {
 int main(int argc, char** argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  if (XInitThreads() == 0) {
-    std::cout << "Failed to initialize thread support in xlib." << std::endl;
-    return 1;
+  if (FLAGS_view_mode) {
+    if (XInitThreads() == 0) {
+      std::cout << "Failed to initialize thread support in xlib." << std::endl;
+      return 1;
+    }
+    // Creating a window object already makes a thread and starts running.
+    // That interface should probably be made better :/
+    WaveWindow window;
+    getchar();
+  } else {
+    float* pixels = new float [FLAGS_width * FLAGS_height];
+    for (int i = 0; i < FLAGS_benchmark_steps; ++i) {
+      ComputeWave(pixels, i);
+    }
+    std::cout << "Don't optimize me away! secret = " << pixels[0];
+    delete[] pixels;
   }
-
-  WaveWindow window;
-
-  getchar();
 }
