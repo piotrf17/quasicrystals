@@ -13,8 +13,8 @@
 
 #include "window.h"
 
-DEFINE_int32(width, 640, "Width of output image.");
-DEFINE_int32(height, 480, "Height of output image.");
+DEFINE_int32(width, 400, "Width of output image.");
+DEFINE_int32(height, 400, "Height of output image.");
 DEFINE_int32(num_waves, 7, "Number of waves to use.");
 DEFINE_double(freq, 1.0 / 5.0, "Frequency of waves.");
 DEFINE_bool(view_mode, true,
@@ -41,9 +41,9 @@ static void ComputeWave(float* img, int step) {
         const float cx = coses[w] * x;
         const float sy = sines[w] * y;
         const float phase = step * 0.05 * (w + 1);
-        p += (cos(freq * (cx + sy) + phase) + 1) / 2;
+        p += 0.5 * (cos(freq * (cx + sy) + phase) + 1);
       }
-      p = (cos(M_PI * p) + 1) / 2;
+      p = 0.5 * (cos(M_PI * p) + 1);
       //      const uint8_t tmp = static_cast<uint8_t>(
       //          255 * std::min(1.0f, std::max(p, 0.0f)));
       img[idx] = p;
@@ -55,7 +55,7 @@ static void ComputeWave(float* img, int step) {
 class WaveWindow : public util::Window {
  public:
   WaveWindow()
-      : util::Window("Quasicrystal", FLAGS_width, FLAGS_height),
+      : util::Window("quasicrystal", FLAGS_width, FLAGS_height),
         pixels_(new float [FLAGS_width * FLAGS_height]),
         step_(0) {
   }
