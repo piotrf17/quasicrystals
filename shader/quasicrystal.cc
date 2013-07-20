@@ -1,3 +1,21 @@
+// Quasicrystals, shader version.
+// Requires OpenGL 2.0 or better.
+//
+// Controls:
+//   [  and  ]   decrease or increase number of waves
+//   -  and  =   decrease or increase spatial frequency (zoom)
+//   ,  and  .   decrease or increase speed
+//   spacebar    pause
+// 
+// Idea based on code by Matthew Peddie:
+// https://github.com/peddie/quasicrystals/
+// which is in turn based on code from Keegan McAllister:
+// http://mainisusuallyafunction.blogspot.com/2011/10/quasicrystals-as-sums-of-waves-in-plane.html
+//
+// Used of GLSL and shaders based on the excellent tutorial on Lighthouse3D:
+// http://www.lighthouse3d.com/tutorials/glsl-tutorial/
+
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -9,10 +27,20 @@
 
 DEFINE_int32(width, 400, "Width of output image.");
 DEFINE_int32(height, 400, "Height of output image.");
+DEFINE_int32(num_waves, 7, "Initial number of waves.");
+DEFINE_double(freq, 1.0 / 5.0, "Initial spatial frequency of waves.");
 
-GLuint f,p;
-float a = 0;
+// Keep in sync with constant in qc.frag
+const int kMaxNumWaves = 15;
+
+// Global variables, woooo!
+static GLuint f,p;
+static float t = 0.0;
 static int width, height;
+static int num_waves;
+static float freq;
+static float dt = 0.1;
+static bool isPaused = false;
 
 void changeSize(int w, int h) {
   width = w;
@@ -25,25 +53,18 @@ void changeSize(int w, int h) {
 
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
+
+  // Update resolution in shader.
+  GLint resolution_loc = glGetUniformLocation(p, "resolution");
+  glUniform2f(resolution_loc, static_cast<float>(w), static_cast<float>(h));
 }
 
 void renderScene(void) {
-
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   glLoadIdentity();
-  /*  gluLookAt(0.0,0.0,5.0, 
-            0.0,0.0,-1.0,
-            0.0f,1.0f,0.0f);*/
-  /*
-  glBegin(GL_QUADS);
-  glVertex3f(-1.0, -1.0, 0.0);
-  glVertex3f(1.0, -1.0, 0.0);
-  glVertex3f(1.0, 1.0, 0.0);
-  glVertex3f(-1.0, 1.0, 0.0);
-  glEnd();
-  */
 
+  // Our canvas is just a square that fills the screen.
   glBegin(GL_QUADS);
   glVertex2i(0, 0);
   glVertex2i(width, 0);
@@ -51,15 +72,47 @@ void renderScene(void) {
   glVertex2i(0, height);
   glEnd();
 
-  
-  a+=0.1;
+  // Set uniform variables.
+  if (!isPaused) {
+    t += dt;
+  }
+  GLint t_loc = glGetUniformLocation(p, "t");
+  glUniform1f(t_loc, t);
+  GLint num_waves_loc = glGetUniformLocation(p, "num_waves");
+  glUniform1i(num_waves_loc, num_waves);
+  GLint freq_loc = glGetUniformLocation(p, "freq");
+  glUniform1f(freq_loc, freq);
+
 
   glutSwapBuffers();
 }
 
 void processNormalKeys(unsigned char key, int x, int y) {
-  if (key == 27) 
-    exit(0);
+  switch (key) {
+    case '[':
+      num_waves = std::max(1, num_waves - 1);
+      break;
+    case ']':
+      num_waves = std::min(kMaxNumWaves, num_waves + 1);
+      break;
+    case '.':
+      dt += 0.1;
+      break;
+    case ',':
+      dt -= 0.1;
+      break;
+    case ' ':
+      isPaused = !isPaused;
+      break;
+    case '-':
+      freq *= 1.1;
+      break;
+    case '=':
+      freq /= 1.1;
+      break;
+    case 27:  // escape
+      exit(0);
+  }
 }
 
 #define printOpenGLError() printOglError(__FILE__, __LINE__)
@@ -144,6 +197,11 @@ void setShaders() {
 }
 
 int main(int argc, char **argv) {
+  google::ParseCommandLineFlags(&argc, &argv, true);
+
+  num_waves = FLAGS_num_waves;
+  freq = static_cast<float>(FLAGS_freq);
+  
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
   glutInitWindowPosition(100, 100);
