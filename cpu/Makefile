@@ -7,8 +7,8 @@ LIBS = -lm -lgflags -lGL -lGLU -lX11
 LD = g++
 CXX = g++
 
-CXX_FLAGS = -std=c++0x -Wall -Wextra -O3 -ftree-vectorize
-LDFLAGS = $(LIBS)
+CXX_FLAGS = -std=c++0x -Wall -Wextra -O3 -ftree-vectorize -g -fopenmp
+LDFLAGS = $(LIBS) -fopenmp
 
 OBJFILES = $(patsubst %.cc, $(OBJDIR)/%.o, $(SOURCES))
 

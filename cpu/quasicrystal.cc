@@ -34,6 +34,7 @@ static void ComputeWave(float* img, int step) {
     sines[i] = sin(angle);
   }
 
+  #pragma omp parallel for
   for (int y = 0; y < FLAGS_height; ++y) {
     for (int x = 0; x < FLAGS_width; ++x) {
       const int idx = FLAGS_width * y + x;
@@ -109,7 +110,8 @@ int main(int argc, char** argv) {
     for (int i = 0; i < FLAGS_benchmark_steps; ++i) {
       ComputeWave(pixels, i);
     }
-    std::cout << "Don't optimize me away! secret = " << pixels[0];
+    std::cout << "Don't optimize me away! secret = " << pixels[0] << std::endl;
     delete[] pixels;
   }
+  return 0;
 }
