@@ -15,7 +15,10 @@
 // Used of GLSL and shaders based on the excellent tutorial on Lighthouse3D:
 // http://www.lighthouse3d.com/tutorials/glsl-tutorial/
 
+#include <fstream>
 #include <iostream>
+#include <streambuf>
+#include <string>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -23,12 +26,12 @@
 #include <GL/glew.h>
 #include <GL/glut.h>
 
-#include "textfile.h"
-
 DEFINE_int32(width, 400, "Width of output image.");
 DEFINE_int32(height, 400, "Height of output image.");
 DEFINE_int32(num_waves, 7, "Initial number of waves.");
 DEFINE_double(freq, 1.0 / 5.0, "Initial spatial frequency of waves.");
+DEFINE_string(shader_source, "qc.frag",
+              "Path to fragment shader source code");
 
 // Keep in sync with constant in qc.frag
 const int kMaxNumWaves = 15;
@@ -42,7 +45,7 @@ static float freq;
 static float dt = 0.1;
 static bool isPaused = false;
 
-void changeSize(int w, int h) {
+void HandleResize(int w, int h) {
   width = w;
   height = h;
   glViewport(0, 0, w, h);
@@ -59,7 +62,7 @@ void changeSize(int w, int h) {
   glUniform2f(resolution_loc, static_cast<float>(w), static_cast<float>(h));
 }
 
-void renderScene(void) {
+void RenderScene(void) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   glLoadIdentity();
@@ -83,11 +86,10 @@ void renderScene(void) {
   GLint freq_loc = glGetUniformLocation(p, "freq");
   glUniform1f(freq_loc, freq);
 
-
   glutSwapBuffers();
 }
 
-void processNormalKeys(unsigned char key, int x, int y) {
+void HandleKeypress(unsigned char key, int x, int y) {
   switch (key) {
     case '[':
       num_waves = std::max(1, num_waves - 1);
@@ -115,83 +117,55 @@ void processNormalKeys(unsigned char key, int x, int y) {
   }
 }
 
-#define printOpenGLError() printOglError(__FILE__, __LINE__)
-
-int printOglError(char *file, int line)
-{
-  //
-  // Returns 1 if an OpenGL error occurred, 0 otherwise.
-  //
-  GLenum glErr;
-  int    retCode = 0;
-
-  glErr = glGetError();
-  while (glErr != GL_NO_ERROR)
-  {
-    printf("glError in file %s @ line %d: %s\n", file, line, gluErrorString(glErr));
-    retCode = 1;
-    glErr = glGetError();
-  }
-  return retCode;
-}
-
-
-void printShaderInfoLog(GLuint obj)
-{
+void PrintShaderInfoLog(GLuint obj) {
   int infologLength = 0;
   int charsWritten  = 0;
   char *infoLog;
 
-  glGetShaderiv(obj, GL_INFO_LOG_LENGTH,&infologLength);
+  glGetShaderiv(obj, GL_INFO_LOG_LENGTH, &infologLength);
 
-  if (infologLength > 0)
-  {
-    infoLog = (char *)malloc(infologLength);
+  if (infologLength > 0) {
+    infoLog = new char[infologLength];
     glGetShaderInfoLog(obj, infologLength, &charsWritten, infoLog);
-    printf("%s\n",infoLog);
-    free(infoLog);
+    std::cout << infoLog << std::endl;
+    delete[] infoLog;
   }
 }
 
-void printProgramInfoLog(GLuint obj)
-{
+void PrintProgramInfoLog(GLuint obj) {
   int infologLength = 0;
   int charsWritten  = 0;
   char *infoLog;
 
   glGetProgramiv(obj, GL_INFO_LOG_LENGTH,&infologLength);
 
-  if (infologLength > 0)
-  {
-    infoLog = (char *)malloc(infologLength);
+  if (infologLength > 0) {
+    infoLog = new char[infologLength];
     glGetProgramInfoLog(obj, infologLength, &charsWritten, infoLog);
-    printf("%s\n",infoLog);
-    free(infoLog);
+    std::cout << infoLog << std::endl;
+    delete[] infoLog;
   }
 }
 
-
-
-void setShaders() {
-  char *fs = NULL;
-
+void LoadShaders() {
   f = glCreateShader(GL_FRAGMENT_SHADER);
 
-  fs = textFileRead("qc.frag");
-  const char * ff = fs;
-  glShaderSource(f, 1, &ff,NULL);
+  // Load the shader source code.
+  std::ifstream infile(FLAGS_shader_source);
+  std::string source_str((std::istreambuf_iterator<char>(infile)),
+                         std::istreambuf_iterator<char>());
+  const char* source = source_str.c_str();
+  glShaderSource(f, 1, &source, NULL);
 
-  free(fs);
-
+  // Compile and print any errors.
   glCompileShader(f);
-
-  printShaderInfoLog(f);
+  PrintShaderInfoLog(f);
 
   p = glCreateProgram();
   glAttachShader(p,f);
 
   glLinkProgram(p);
-  printProgramInfoLog(p);
+  PrintProgramInfoLog(p);
 
   glUseProgram(p);
 }
@@ -199,22 +173,25 @@ void setShaders() {
 int main(int argc, char **argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
+  // Initialize some flag based parameters.
   num_waves = FLAGS_num_waves;
   freq = static_cast<float>(FLAGS_freq);
-  
+
+  // Create a new window with GLUT.
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
   glutInitWindowPosition(100, 100);
   glutInitWindowSize(FLAGS_width, FLAGS_height);
   glutCreateWindow("quasicrystal"); 
 
-  glutDisplayFunc(renderScene);
-  glutIdleFunc(renderScene);
-  glutReshapeFunc(changeSize);
-  glutKeyboardFunc(processNormalKeys);
+  // Register Callbacks.
+  glutDisplayFunc(RenderScene);
+  glutIdleFunc(RenderScene);
+  glutReshapeFunc(HandleResize);
+  glutKeyboardFunc(HandleKeypress);
 
   glClearColor(0.0, 0.0, 0.0, 1.0);
-
+  
   glewInit();
   if (glewIsSupported("GL_VERSION_2_0"))
     printf("Ready for OpenGL 2.0\n");
@@ -223,7 +200,7 @@ int main(int argc, char **argv) {
     exit(1);
   }
   
-  setShaders();
+  LoadShaders();
 
   glutMainLoop();
 

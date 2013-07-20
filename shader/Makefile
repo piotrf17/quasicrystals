@@ -1,5 +1,5 @@
 PROJECT = quasicrystal
-SOURCES = quasicrystal.cc textfile.cc
+SOURCES = quasicrystal.cc
 OBJDIR = obj
 
 LIBS = -lgflags -lGL -lGLU -lGLEW -lglut
