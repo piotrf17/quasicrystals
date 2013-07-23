@@ -42,8 +42,9 @@ static float t = 0.0;
 static int width, height;
 static int num_waves;
 static float freq;
-static float dt = 0.1;
+static float dt = 0.05;
 static bool isPaused = false;
+GLuint texture;
 
 void HandleResize(int w, int h) {
   width = w;
@@ -63,18 +64,6 @@ void HandleResize(int w, int h) {
 }
 
 void RenderScene(void) {
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  glLoadIdentity();
-
-  // Our canvas is just a square that fills the screen.
-  glBegin(GL_QUADS);
-  glVertex2i(0, 0);
-  glVertex2i(width, 0);
-  glVertex2i(width, height);
-  glVertex2i(0, height);
-  glEnd();
-
   // Set uniform variables.
   if (!isPaused) {
     t += dt;
@@ -85,6 +74,24 @@ void RenderScene(void) {
   glUniform1i(num_waves_loc, num_waves);
   GLint freq_loc = glGetUniformLocation(p, "freq");
   glUniform1f(freq_loc, freq);
+
+  // Setup textures.
+  GLint phases_loc = glGetUniformLocation(p, "phases");
+  glUniform1i(phases_loc, 0);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_1D, texture);
+
+  // Reset drawing state.
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glLoadIdentity();
+
+  // Draw our canvas, this should invoke the shaders.
+  glBegin(GL_QUADS);
+  glVertex2i(0, 0);
+  glVertex2i(width, 0);
+  glVertex2i(width, height);
+  glVertex2i(0, height);
+  glEnd();
 
   glutSwapBuffers();
 }
@@ -98,10 +105,10 @@ void HandleKeypress(unsigned char key, int x, int y) {
       num_waves = std::min(kMaxNumWaves, num_waves + 1);
       break;
     case '.':
-      dt += 0.1;
+      dt += 0.01;
       break;
     case ',':
-      dt -= 0.1;
+      dt -= 0.01;
       break;
     case ' ':
       isPaused = !isPaused;
@@ -201,6 +208,25 @@ int main(int argc, char **argv) {
   }
   
   LoadShaders();
+
+  glEnable(GL_TEXTURE_1D);
+  GLfloat phases[] = {1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1,
+                      0.1, 0.2, 0.3, 0.4, 0.5};
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_1D, texture);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage1D(GL_TEXTURE_1D,
+               0,  // LOD level, 0 = base image
+               GL_R32F,  // packing type
+               kMaxNumWaves,  // size
+               0,  // border
+               GL_RED,  // pixel data format
+               GL_FLOAT, // pixel data type
+               phases);
+  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glBindTexture(GL_TEXTURE_1D, texture);
 
   glutMainLoop();
 

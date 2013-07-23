@@ -1,5 +1,5 @@
 // Quasicrystals, implemented as a GL fragment shader.
-// Requires OpenGL 2.0 or greater.
+// Requires OpenGL 3.0 or greater.
 
 const float kPi = 3.14159;
 const int kMaxNumWaves = 15;
@@ -9,6 +9,8 @@ uniform float t;           // time
 uniform vec2 resolution;   // screen resolution
 uniform int num_waves;     // number of waves
 uniform float freq;        // spatial frequency of waves
+
+uniform sampler1D phases;
 
 void main() {
   float x = gl_FragCoord.x - 0.5 * resolution.x;
@@ -28,7 +30,8 @@ void main() {
   for (int w = 0; w < num_waves; ++w) {
     float cx = coses[w] * x;
     float sy = sines[w] * y;
-    float phase = t * 0.05 * (float(w) + 1.0);
+    vec4 phase_vec = texture1D(phases, (float(w) + 0.5) / float(kMaxNumWaves));
+    float phase = t * phase_vec.r;
     p += 0.5 * (cos(freq * (cx + sy) + phase) + 1.0);
   }
 
