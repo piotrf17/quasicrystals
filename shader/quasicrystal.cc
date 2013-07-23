@@ -15,12 +15,12 @@
 // Used of GLSL and shaders based on the excellent tutorial on Lighthouse3D:
 // http://www.lighthouse3d.com/tutorials/glsl-tutorial/
 
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <streambuf>
 #include <string>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <gflags/gflags.h>
 #include <GL/glew.h>
@@ -32,19 +32,65 @@ DEFINE_int32(num_waves, 7, "Initial number of waves.");
 DEFINE_double(freq, 1.0 / 5.0, "Initial spatial frequency of waves.");
 DEFINE_string(shader_source, "qc.frag",
               "Path to fragment shader source code");
+DEFINE_string(phases,
+              "1.0, 0.9, 0.8, 0.7, 0.6,"
+              "0.5, 0.4, 0.3, 0.2, 0.1,"
+              "0.1, 0.2, 0.3, 0.4, 0.5",
+              "Comma seperated list of phases, maximum of 15.");
+DEFINE_double(time_granularity, 0.01,
+              "Parameter that controls granularity in modifying the speed.");
 
 // Keep in sync with constant in qc.frag
 const int kMaxNumWaves = 15;
 
 // Global variables, woooo!
-static GLuint f,p;
-static float t = 0.0;
-static int width, height;
-static int num_waves;
+static GLuint p;                // handle to shader program
+static GLuint phases_texture;   // handle to texture containing phases
+static int width, height;       // screen params
+static float t, dt;             // passage of time
+static bool is_paused = false;
+static int num_waves;          
 static float freq;
-static float dt = 0.05;
-static bool isPaused = false;
-GLuint texture;
+
+void InitializeParameters() {
+  num_waves = std::max(std::min(FLAGS_num_waves, kMaxNumWaves), 1);
+  freq = static_cast<float>(FLAGS_freq);
+
+  t = 0.0;
+  dt = 5 * FLAGS_time_granularity;
+
+  // Split comma seperated string into floats.  I should just use boost...
+  GLfloat* phases = new GLfloat[kMaxNumWaves];
+  std::stringstream ss(FLAGS_phases);
+  std::string phase_str;
+  int i = 0;
+  while (std::getline(ss, phase_str, ',') && i < kMaxNumWaves) {
+    phases[i] = atof(phase_str.c_str());
+    ++i;
+  }
+  
+  // Pass phases into the shader via a 1-d texture.  
+  glEnable(GL_TEXTURE_1D);
+  glGenTextures(1, &phases_texture);
+  glBindTexture(GL_TEXTURE_1D, phases_texture);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage1D(GL_TEXTURE_1D,
+               0,             // LOD level, 0 = base image
+               GL_R32F,       // packing type
+               kMaxNumWaves,  // size
+               0,             // border
+               GL_RED,        // pixel data format
+               GL_FLOAT,      // pixel data type
+               phases);
+  
+  // I think this should setup sampling to be close enough to selecting
+  // values from the array.  I haven't thoroughly tested.
+  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  
+  delete[] phases;
+}
 
 void HandleResize(int w, int h) {
   width = w;
@@ -64,22 +110,21 @@ void HandleResize(int w, int h) {
 }
 
 void RenderScene(void) {
-  // Set uniform variables.
-  if (!isPaused) {
+  if (!is_paused) {
     t += dt;
   }
+  
+  // Pass in all parameters to the shader.
   GLint t_loc = glGetUniformLocation(p, "t");
   glUniform1f(t_loc, t);
   GLint num_waves_loc = glGetUniformLocation(p, "num_waves");
   glUniform1i(num_waves_loc, num_waves);
   GLint freq_loc = glGetUniformLocation(p, "freq");
   glUniform1f(freq_loc, freq);
-
-  // Setup textures.
   GLint phases_loc = glGetUniformLocation(p, "phases");
   glUniform1i(phases_loc, 0);
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_1D, texture);
+  glBindTexture(GL_TEXTURE_1D, phases_texture);
 
   // Reset drawing state.
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -105,13 +150,13 @@ void HandleKeypress(unsigned char key, int x, int y) {
       num_waves = std::min(kMaxNumWaves, num_waves + 1);
       break;
     case '.':
-      dt += 0.01;
+      dt += FLAGS_time_granularity;
       break;
     case ',':
-      dt -= 0.01;
+      dt -= FLAGS_time_granularity;
       break;
     case ' ':
-      isPaused = !isPaused;
+      is_paused = !is_paused;
       break;
     case '-':
       freq *= 1.1;
@@ -155,7 +200,7 @@ void PrintProgramInfoLog(GLuint obj) {
 }
 
 void LoadShaders() {
-  f = glCreateShader(GL_FRAGMENT_SHADER);
+  GLuint f = glCreateShader(GL_FRAGMENT_SHADER);
 
   // Load the shader source code.
   std::ifstream infile(FLAGS_shader_source);
@@ -180,10 +225,6 @@ void LoadShaders() {
 int main(int argc, char **argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  // Initialize some flag based parameters.
-  num_waves = FLAGS_num_waves;
-  freq = static_cast<float>(FLAGS_freq);
-
   // Create a new window with GLUT.
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
@@ -197,8 +238,10 @@ int main(int argc, char **argv) {
   glutReshapeFunc(HandleResize);
   glutKeyboardFunc(HandleKeypress);
 
+  // Setup any other random OpenGL drawing stuff.
   glClearColor(0.0, 0.0, 0.0, 1.0);
-  
+
+  // Intialize glew and compile our shader.
   glewInit();
   if (glewIsSupported("GL_VERSION_2_0"))
     printf("Ready for OpenGL 2.0\n");
@@ -206,27 +249,10 @@ int main(int argc, char **argv) {
     printf("OpenGL 2.0 not supported\n");
     exit(1);
   }
-  
   LoadShaders();
 
-  glEnable(GL_TEXTURE_1D);
-  GLfloat phases[] = {1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1,
-                      0.1, 0.2, 0.3, 0.4, 0.5};
-  glGenTextures(1, &texture);
-  glBindTexture(GL_TEXTURE_1D, texture);
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  glTexImage1D(GL_TEXTURE_1D,
-               0,  // LOD level, 0 = base image
-               GL_R32F,  // packing type
-               kMaxNumWaves,  // size
-               0,  // border
-               GL_RED,  // pixel data format
-               GL_FLOAT, // pixel data type
-               phases);
-  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glBindTexture(GL_TEXTURE_1D, texture);
+  // Setup initial parameters to pass into the shader.
+  InitializeParameters();
 
   glutMainLoop();
 
