@@ -9,6 +9,7 @@ uniform float t;           // time
 uniform vec2 resolution;   // screen resolution
 uniform int num_waves;     // number of waves
 uniform float freq;        // spatial frequency of waves
+uniform float mix;         // mixing parameter for changing num_waves
 
 uniform sampler1D phases;
 
@@ -16,23 +17,43 @@ void main() {
   float x = gl_FragCoord.x - 0.5 * resolution.x;
   float y = gl_FragCoord.y - 0.5 * resolution.y;
 
+  // Weights for mixing in a new wave.
+  float weights[kMaxNumWaves];
+  for (int i = 0; i < kMaxNumWaves; ++i) {
+    weights[i] = 1.0;
+  }
+  weights[1] = mix;
+
   // Initialize angles sines and coses.
   float coses[kMaxNumWaves]; 
   float sines[kMaxNumWaves];
-  for (int i = 0; i < num_waves; ++i) {
-    float angle = float(i) * kPi / float(num_waves);
+  coses[0] = 1.0;
+  sines[0] = 0.0;
+  for (int i = 1; i < num_waves + 1; ++i) {
+    float angle = (1.0 - mix) * float(i - 1) * kPi / float(num_waves) +
+        mix * float(i) * kPi / float(num_waves + 1);
     coses[i] = cos(angle);
     sines[i] = sin(angle);
   }
 
+  // Mixing together phases.
+  float mixed_phases[kMaxNumWaves];
+  vec4 phase_vec = texture1D(phases, (float(0.0) + 0.5) / float(kMaxNumWaves));
+  mixed_phases[0] = t * phase_vec.r;
+  for (int w = 1; w < num_waves + 1; ++w) {
+    vec4 phase_vec0 = texture1D(phases, (float(w - 1) + 0.5) / float(kMaxNumWaves));
+    vec4 phase_vec1 = texture1D(phases, (float(w) + 0.5) / float(kMaxNumWaves));
+    mixed_phases[w] = t * ((1.0 - mix) * phase_vec0.r + mix * phase_vec1.r);
+  }
+  
   // Compute intensity over the sum of waves.
   float p = 0.0;
-  for (int w = 0; w < num_waves; ++w) {
+  for (int w = 0; w < num_waves + 1; ++w) {
     float cx = coses[w] * x;
     float sy = sines[w] * y;
-    vec4 phase_vec = texture1D(phases, (float(w) + 0.5) / float(kMaxNumWaves));
-    float phase = t * phase_vec.r;
-    p += 0.5 * (cos(freq * (cx + sy) + phase) + 1.0);
+//    vec4 phase_vec = texture1D(phases, (float(w) + 0.5) / float(kMaxNumWaves));
+//    float phase = t * phase_vec.r;
+    p += weights[w] * 0.5 * (cos(freq * (cx + sy) + mixed_phases[w]) + 1.0);
   }
 
   // General Rotors patented color mixer:

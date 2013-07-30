@@ -53,6 +53,7 @@ static float t, dt;             // passage of time
 static bool is_paused = false;
 static int num_waves;          
 static float freq;
+static float mix, mixv;
 
 void InitializeParameters() {
   num_waves = std::max(std::min(FLAGS_num_waves, kMaxNumWaves), 1);
@@ -60,6 +61,7 @@ void InitializeParameters() {
 
   t = 0.0;
   dt = 5 * FLAGS_time_granularity;
+  mix = 0.0; mixv = 0.0;
 
   // Split comma seperated string into floats.  I should just use boost...
   GLfloat* phases = new GLfloat[kMaxNumWaves];
@@ -114,6 +116,17 @@ void HandleResize(int w, int h) {
 void RenderScene(void) {
   if (!is_paused) {
     t += dt;
+
+    mix += mixv;
+    if (mix < 0) {
+      mix = 0.0;
+      mixv = 0.0;
+    }
+    if (mix > 1) {
+      mix = 0.0;
+      mixv = 0.0;
+      ++num_waves;
+    }
   }
   
   // Pass in all parameters to the shader.
@@ -123,6 +136,8 @@ void RenderScene(void) {
   glUniform1i(num_waves_loc, num_waves);
   GLint freq_loc = glGetUniformLocation(p, "freq");
   glUniform1f(freq_loc, freq);
+  GLint mix_loc = glGetUniformLocation(p, "mix");
+  glUniform1f(mix_loc, mix);
   GLint phases_loc = glGetUniformLocation(p, "phases");
   glUniform1i(phases_loc, 0);
   glActiveTexture(GL_TEXTURE0);
@@ -146,10 +161,24 @@ void RenderScene(void) {
 void HandleKeypress(unsigned char key, int x, int y) {
   switch (key) {
     case '[':
-      num_waves = std::max(1, num_waves - 1);
+      if (mixv > 0.0) {
+        mixv = -0.01;
+      } else if (mixv < 0.0) {
+        mix = 0.0; mixv = 0.0;
+      } else if (num_waves > 1) {
+        --num_waves;
+        mix = 1.0; mixv = -0.01;
+      }
       break;
     case ']':
-      num_waves = std::min(kMaxNumWaves, num_waves + 1);
+      if (mixv < 0.0) {
+        mixv = 0.01;
+      } else if (mixv > 0.0) {
+        mix = 0.0; mixv = 0.0;
+        ++num_waves;
+      } else if (num_waves < kMaxNumWaves - 1) {
+        mix = 0.0; mixv = 0.01;
+      }
       break;
     case '.':
       dt += FLAGS_time_granularity;
