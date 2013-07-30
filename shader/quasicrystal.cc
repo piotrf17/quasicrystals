@@ -26,8 +26,8 @@
 #include <GL/glew.h>
 #include <GL/glut.h>
 
-DEFINE_int32(width, 400, "Width of output image.");
-DEFINE_int32(height, 400, "Height of output image.");
+DEFINE_int32(width, 600, "Width of output image.");
+DEFINE_int32(height, 600, "Height of output image.");
 DEFINE_int32(num_waves, 7, "Initial number of waves.");
 DEFINE_double(freq, 1.0 / 5.0, "Initial spatial frequency of waves.");
 DEFINE_string(shader_source, "qc.frag",
@@ -39,6 +39,8 @@ DEFINE_string(phases,
               "Comma seperated list of phases, maximum of 15.");
 DEFINE_double(time_granularity, 0.01,
               "Parameter that controls granularity in modifying the speed.");
+
+void LoadShaders();
 
 // Keep in sync with constant in qc.frag
 const int kMaxNumWaves = 15;
@@ -163,6 +165,9 @@ void HandleKeypress(unsigned char key, int x, int y) {
       break;
     case '=':
       freq /= 1.1;
+      break;
+    case 'r':
+      LoadShaders();
       break;
     case 27:  // escape
       exit(0);

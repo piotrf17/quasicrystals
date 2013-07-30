@@ -35,7 +35,20 @@ void main() {
     p += 0.5 * (cos(freq * (cx + sy) + phase) + 1.0);
   }
 
-  p = 0.5 * (cos(kPi * p) + 1.0);
+  // General Rotors patented color mixer:
+  float cc = cos(kPi * p);
+  float ss = sin(kPi * p);
+  const float ra = 0.0;
+  const float ga = 0.2 * kPi;
+  const float ba = 0.5 * kPi;
+  const float k = 1.6;
+  const float d = 0.7;
+  float rr = cos(ra) * cc + sin(ra) * ss;
+  float gg = cos(ga) * cc + sin(ga) * ss;
+  float bb = cos(ba) * cc + sin(ba) * ss;
+  float r = k * 0.5 * rr + d;
+  float g = k * 0.5 * gg + d;
+  float b = k * 0.5 * bb + d;
 
-  gl_FragColor = vec4(p, p, p, 1.0);
+  gl_FragColor = vec4(r, g, b, 1.0);
 }
