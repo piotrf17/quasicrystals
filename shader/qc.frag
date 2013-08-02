@@ -5,11 +5,11 @@ const float kPi = 3.14159;
 const int kMaxNumWaves = 15;
 
 // Parameters set outside of shader.
-uniform float t;           // time
-uniform vec2 resolution;   // screen resolution
-uniform int num_waves;     // number of waves
-uniform float freq;        // spatial frequency of waves
-uniform float mix;         // mixing parameter for changing num_waves
+uniform float t;             // time
+uniform vec2 resolution;     // screen resolution
+uniform int num_waves;       // number of waves
+uniform float spatial_freq;  // spatial frequency of waves
+uniform float mix;           // mixing parameter for changing num_waves
 
 uniform sampler1D phases;
 
@@ -51,9 +51,7 @@ void main() {
   for (int w = 0; w < num_waves + 1; ++w) {
     float cx = coses[w] * x;
     float sy = sines[w] * y;
-//    vec4 phase_vec = texture1D(phases, (float(w) + 0.5) / float(kMaxNumWaves));
-//    float phase = t * phase_vec.r;
-    p += weights[w] * 0.5 * (cos(freq * (cx + sy) + mixed_phases[w]) + 1.0);
+    p += weights[w] * 0.5 * (cos(spatial_freq * (cx + sy) + mixed_phases[w]) + 1.0);
   }
 
   // General Rotors patented color mixer:

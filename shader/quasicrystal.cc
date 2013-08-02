@@ -29,7 +29,7 @@
 DEFINE_int32(width, 600, "Width of output image.");
 DEFINE_int32(height, 600, "Height of output image.");
 DEFINE_int32(num_waves, 7, "Initial number of waves.");
-DEFINE_double(freq, 1.0 / 5.0, "Initial spatial frequency of waves.");
+DEFINE_double(spatial_freq, 1.0 / 5.0, "Initial spatial frequency of waves.");
 DEFINE_string(shader_source, "qc.frag",
               "Path to fragment shader source code");
 DEFINE_string(phases,
@@ -52,12 +52,12 @@ static int width, height;       // screen params
 static float t, dt;             // passage of time
 static bool is_paused = false;
 static int num_waves;          
-static float freq;
+static float spatial_freq;
 static float mix, mixv;
 
 void InitializeParameters() {
   num_waves = std::max(std::min(FLAGS_num_waves, kMaxNumWaves), 1);
-  freq = static_cast<float>(FLAGS_freq);
+  spatial_freq = FLAGS_spatial_freq;
 
   t = 0.0;
   dt = 5 * FLAGS_time_granularity;
@@ -134,8 +134,8 @@ void RenderScene(void) {
   glUniform1f(t_loc, t);
   GLint num_waves_loc = glGetUniformLocation(p, "num_waves");
   glUniform1i(num_waves_loc, num_waves);
-  GLint freq_loc = glGetUniformLocation(p, "freq");
-  glUniform1f(freq_loc, freq);
+  GLint spatial_freq_loc = glGetUniformLocation(p, "spatial_freq");
+  glUniform1f(spatial_freq_loc, spatial_freq);
   GLint mix_loc = glGetUniformLocation(p, "mix");
   glUniform1f(mix_loc, mix);
   GLint phases_loc = glGetUniformLocation(p, "phases");
@@ -190,10 +190,10 @@ void HandleKeypress(unsigned char key, int x, int y) {
       is_paused = !is_paused;
       break;
     case '-':
-      freq *= 1.1;
+      spatial_freq *= 1.1;
       break;
     case '=':
-      freq /= 1.1;
+      spatial_freq /= 1.1;
       break;
     case 'r':
       LoadShaders();
