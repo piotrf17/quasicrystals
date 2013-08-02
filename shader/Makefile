@@ -1,8 +1,9 @@
 PROJECT = quasicrystal
-SOURCES = quasicrystal.cc
+SOURCES = shader_util.cc window.cc quasicrystal.cc
 OBJDIR = obj
 
-LIBS = -lgflags -lGL -lGLU -lGLEW -lglut
+#LIBS = -lgflags -lGL -lGLU -lGLEW -lglut 
+LIBS = -lgflags -lsfml-window -lGLEW
 
 LD = g++
 CXX = g++
