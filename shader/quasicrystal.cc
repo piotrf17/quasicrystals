@@ -21,7 +21,6 @@
 
 #include <gflags/gflags.h>
 #include <GL/glew.h>
-#include <SFML/Window.hpp>
 
 #include "shader_util.h"
 #include "window.h"
@@ -43,15 +42,17 @@ DEFINE_double(time_granularity, 0.01,
 // Keep in sync with constant in qc.frag
 const int kMaxNumWaves = 15;
 
-class QCWindow : public Window2d {
+class QCWindow : public graphics::Window2d {
  public:
   QCWindow(int width, int height) :
       Window2d(width, height, "quasicrystal") {
   }
 
  protected:
-  virtual void Init() {
-    Window2d::Init();
+  virtual bool Init() {
+    if (!Window2d::Init()) {
+      return false;
+    }
 
     // Initialize glew and compile our shaders.
     glewInit();
@@ -59,14 +60,14 @@ class QCWindow : public Window2d {
       std::cout << "Ready for OpenGL 2.0" << std::endl;
     } else {
       std::cout << "ERROR: OpenGL 2.0 not supported" << std::endl;
-      Close();
+      return false;
     }
     std::string debug;
     if (!ShaderUtil::BuildShaderFromFile(
             FLAGS_shader_source, GL_FRAGMENT_SHADER, &shader_, &debug)) {
       std::cout << "ERROR: failed to load shader from " << FLAGS_shader_source
                 << std::endl << debug;
-      Close();
+      return false;
     }
 
     // Initialize parameters.
@@ -110,6 +111,7 @@ class QCWindow : public Window2d {
     delete[] phases;
 
     is_paused_ = false;
+    return true;
   }
   
   virtual void Draw() {
@@ -155,9 +157,9 @@ class QCWindow : public Window2d {
     glEnd();
   }
 
-  virtual void Keypress(int key) {
+  virtual void Keypress(unsigned int key) {
     switch (key) {
-      case 10:  // [
+      case XK_bracketleft:
         if (mixv_ > 0.0) {
           mixv_ = -0.01;
         } else if (mixv_ < 0.0) {
@@ -167,7 +169,7 @@ class QCWindow : public Window2d {
           mix_ = 1.0; mixv_ = -0.01;
         }
         break;
-      case 11:  // ]
+      case XK_bracketright:
         if (mixv_ < 0.0) {
           mixv_ = 0.01;
         } else if (mixv_ > 0.0) {
@@ -177,20 +179,23 @@ class QCWindow : public Window2d {
           mix_ = 0.0; mixv_ = 0.01;
         }
         break;
-      case 14:  // '.'
+      case XK_period:
         dt_ += FLAGS_time_granularity;
         break;
-      case 13:  // ','
+      case XK_comma:
         dt_ -= FLAGS_time_granularity;
         break;
-      case 21:  // ' '
+      case XK_space:
         is_paused_ = !is_paused_;
         break;
-      case 20:  // '-'
+      case XK_minus:
         spatial_freq_ *= 1.1;
         break;
-      case 19:  // '='
+      case XK_equal:
         spatial_freq_ /= 1.1;
+        break;
+      case XK_Escape:
+        Close();
         break;
       default:
         break;
