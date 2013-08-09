@@ -141,6 +141,10 @@ class QCWindow : public graphics::Window2d {
     glUniform1f(mix_loc, mix_);
     GLint phases_loc = glGetUniformLocation(shader_, "phases");
     glUniform1i(phases_loc, 0);
+    // Update resolution in shader.
+    GLint resolution_loc = glGetUniformLocation(shader_, "resolution");
+    glUniform2f(resolution_loc, static_cast<float>(width()),
+                static_cast<float>(height()));
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_1D, phases_texture_);
 
