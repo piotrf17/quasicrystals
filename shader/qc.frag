@@ -1,17 +1,17 @@
 // Quasicrystals, implemented as a GL fragment shader.
-// Requires OpenGL 3.0 or greater.
+// Requires OpenGL 2.0 or greater.
 
 const float kPi = 3.14159;
 const int kMaxNumWaves = 15;
 
 // Parameters set outside of shader.
 uniform float t;             // time
-uniform vec2 resolution;     // screen resolution
 uniform int num_waves;       // number of waves
-uniform float spatial_freq;  // spatial frequency of waves
 uniform float mix;           // mixing parameter for changing num_waves
+uniform sampler1D angular_frequencies;  // per wave angular frequencies
+uniform float wavenumber;  // spatial frequency of all the waves
 
-uniform sampler1D phases;
+uniform vec2 resolution;     // screen resolution
 
 void main() {
   float x = gl_FragCoord.x - 0.5 * resolution.x;
@@ -36,14 +36,17 @@ void main() {
     sines[i] = sin(angle);
   }
 
-  // Mixing together phases.
-  float mixed_phases[kMaxNumWaves];
-  vec4 phase_vec = texture1D(phases, (float(0.0) + 0.5) / float(kMaxNumWaves));
-  mixed_phases[0] = t * phase_vec.r;
+  // Mixing together angular frequencies.
+  float mixed_angular_freq[kMaxNumWaves];
+  vec4 phase_vec = texture1D(angular_frequencies,
+                             (float(0.0) + 0.5) / float(kMaxNumWaves));
+  mixed_angular_freq[0] = phase_vec.r;
   for (int w = 1; w < num_waves + 1; ++w) {
-    vec4 phase_vec0 = texture1D(phases, (float(w - 1) + 0.5) / float(kMaxNumWaves));
-    vec4 phase_vec1 = texture1D(phases, (float(w) + 0.5) / float(kMaxNumWaves));
-    mixed_phases[w] = t * ((1.0 - mix) * phase_vec0.r + mix * phase_vec1.r);
+    vec4 phase_vec0 = texture1D(angular_frequencies,
+    	 	                (float(w - 1) + 0.5) / float(kMaxNumWaves));
+    vec4 phase_vec1 = texture1D(angular_frequencies, 
+    	 	                (float(w) + 0.5) / float(kMaxNumWaves));
+    mixed_angular_freq[w] = ((1.0 - mix) * phase_vec0.r + mix * phase_vec1.r);
   }
   
   // Compute intensity over the sum of waves.
@@ -51,7 +54,9 @@ void main() {
   for (int w = 0; w < num_waves + 1; ++w) {
     float cx = coses[w] * x;
     float sy = sines[w] * y;
-    p += weights[w] * 0.5 * (cos(spatial_freq * (cx + sy) + mixed_phases[w]) + 1.0);
+    p += weights[w] * 0.5 * (cos(wavenumber * (cx + sy) + 
+                                 mixed_angular_freq[w] * t)
+			      + 1.0);
   }
 
   // General Rotors patented color mixer:

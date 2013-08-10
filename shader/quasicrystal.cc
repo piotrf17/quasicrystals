@@ -80,11 +80,69 @@ QCParams InitQCParamsFromFlags() {
   return params;
 }
 
+// A class that bridges a set of quasicrystal parameters and a shader.
+class QCShaderParams {
+ public:
+  QCShaderParams(const QCParams* params) : params_(params), shader_(0) {
+  }
+
+  // Initialize our connection to the shader with the given handle.
+  void Init(GLuint shader) {
+    shader_ = shader;
+    // The vector of angular frequencies is passed as a texture.
+    glEnable(GL_TEXTURE_1D);
+    glGenTextures(1, &angular_frequencies_texture_);
+    glBindTexture(GL_TEXTURE_1D, angular_frequencies_texture_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage1D(GL_TEXTURE_1D,
+                 0,             // LOD level, 0 = base image
+                 GL_R32F,       // packing type
+                 kMaxNumWaves,  // size
+                 0,             // border
+                 GL_RED,        // pixel data format
+                 GL_FLOAT,      // pixel data type
+                 params_->angular_frequencies);
+  
+    // I think this should setup sampling to be close enough to selecting
+    // values from the array.  I haven't thoroughly tested.
+    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  }
+
+  // Send our parameters down to the shader.
+  // Make sure the names match up with the variable names in the shader.
+  void UpdateShaderParams() {
+    GLint t_loc = glGetUniformLocation(shader_, "t");
+    glUniform1f(t_loc, params_->t);
+    GLint num_waves_loc = glGetUniformLocation(shader_, "num_waves");
+    glUniform1i(num_waves_loc, params_->num_waves);
+    GLint mix_loc = glGetUniformLocation(shader_, "mix");
+    glUniform1f(mix_loc, params_->mix);
+    GLint angular_frequencies_loc =
+        glGetUniformLocation(shader_, "angular_frequencies");
+    glUniform1i(angular_frequencies_loc, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_1D, angular_frequencies_texture_);
+
+    GLint wavenumber_loc = glGetUniformLocation(shader_, "wavenumber");
+    glUniform1f(wavenumber_loc, params_->wavenumber);
+  }
+  
+  void set_shader(GLuint shader) {shader_ = shader;}
+  
+ private:
+  const QCParams* params_;
+  GLuint shader_;
+  GLuint angular_frequencies_texture_;
+};
+
 class QCWindow : public graphics::Window2d {
  public:
   QCWindow(int width, int height, const QCParams& params)
       : Window2d(width, height, "quasicrystal"),
-        params_(params) {
+        params_(params),
+        shader_params_(&params_) {
   }
 
  protected:
@@ -109,30 +167,13 @@ class QCWindow : public graphics::Window2d {
       return false;
     }
 
+    // Setup the bridge between our params and the shader params.
+    shader_params_.Init(shader_);
+
     // Initialize any simulation variables outside of params.
     is_paused_ = false;
     dt_ = 5 * FLAGS_time_granularity;
     mixv_ = 0.0;
-
-    // Pass phases into the shader via a 1-d texture.  
-    glEnable(GL_TEXTURE_1D);
-    glGenTextures(1, &phases_texture_);
-    glBindTexture(GL_TEXTURE_1D, phases_texture_);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage1D(GL_TEXTURE_1D,
-                 0,             // LOD level, 0 = base image
-                 GL_R32F,       // packing type
-                 kMaxNumWaves,  // size
-                 0,             // border
-                 GL_RED,        // pixel data format
-                 GL_FLOAT,      // pixel data type
-                 params_.angular_frequencies);
-  
-    // I think this should setup sampling to be close enough to selecting
-    // values from the array.  I haven't thoroughly tested.
-    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 
     return true;
   }
@@ -153,23 +194,8 @@ class QCWindow : public graphics::Window2d {
       }
     }
   
-    // Pass in all parameters to the shader.
-    GLint t_loc = glGetUniformLocation(shader_, "t");
-    glUniform1f(t_loc, params_.t);
-    GLint num_waves_loc = glGetUniformLocation(shader_, "num_waves");
-    glUniform1i(num_waves_loc, params_.num_waves);
-    GLint spatial_freq_loc = glGetUniformLocation(shader_, "spatial_freq");
-    glUniform1f(spatial_freq_loc, params_.wavenumber);
-    GLint mix_loc = glGetUniformLocation(shader_, "mix");
-    glUniform1f(mix_loc, params_.mix);
-    GLint phases_loc = glGetUniformLocation(shader_, "phases");
-    glUniform1i(phases_loc, 0);
-    // Update resolution in shader.
-    GLint resolution_loc = glGetUniformLocation(shader_, "resolution");
-    glUniform2f(resolution_loc, static_cast<float>(width()),
-                static_cast<float>(height()));
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_1D, phases_texture_);
+    // Pass in all QC parameters to the shader.
+    shader_params_.UpdateShaderParams();
 
     // Reset drawing state.
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -182,6 +208,14 @@ class QCWindow : public graphics::Window2d {
     glVertex2i(width(), height());
     glVertex2i(0, height());
     glEnd();
+  }
+
+  virtual void Resize(int width, int height) {
+    Window2d::Resize(width, height);
+    // Update resolution in shader.
+    GLint resolution_loc = glGetUniformLocation(shader_, "resolution");
+    glUniform2f(resolution_loc, static_cast<float>(width),
+                static_cast<float>(height));
   }
 
   virtual void Keypress(unsigned int key) {
@@ -230,11 +264,11 @@ class QCWindow : public graphics::Window2d {
   }
 
  private:
-  GLuint shader_;
-  GLuint phases_texture_;
-  bool is_paused_;
-  float dt_, mixv_;
-  QCParams params_;
+  GLuint shader_;                  // Shader program handle.
+  QCParams params_;                // Mathematical params for the quasicrystal.
+  QCShaderParams shader_params_;   // Link between our params and shader.
+  bool is_paused_;                 // Is the simulation paused or not?
+  float dt_, mixv_;                // Time step, mixing velocity.
 };
 
 }  // namespace
