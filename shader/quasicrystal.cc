@@ -6,6 +6,9 @@
 //   -  and  =   decrease or increase spatial frequency (zoom)
 //   ,  and  .   decrease or increase speed
 //   spacebar    pause
+//   a, d        move angular frequency selector left or right
+//   w, s        increase / decrease selected angular frequency
+//   q           close angular frequency selector
 // 
 // Idea based on code by Matthew Peddie:
 // https://github.com/peddie/quasicrystals/
@@ -22,6 +25,7 @@
 #include <gflags/gflags.h>
 #include <GL/glew.h>
 
+#include "array_adjuster.h"
 #include "shader_util.h"
 #include "window.h"
 
@@ -42,7 +46,9 @@ DEFINE_double(time_granularity, 0.01,
 // Keep in sync with constant in qc.frag
 const int kMaxNumWaves = 15;
 
-namespace {
+using graphics::ShaderUtil;
+
+namespace quasicrystal {
 
 // A sufficient set of parameters to describe any snapshot of the quasicrystals.
 struct QCParams {
@@ -124,7 +130,8 @@ class QCShaderParams {
     glUniform1i(angular_frequencies_loc, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_1D, angular_frequencies_texture_);
-
+    glTexSubImage1D(GL_TEXTURE_1D, 0, 0, kMaxNumWaves, GL_RED, GL_FLOAT,
+                    params_->angular_frequencies);
     GLint wavenumber_loc = glGetUniformLocation(shader_, "wavenumber");
     glUniform1f(wavenumber_loc, params_->wavenumber);
   }
@@ -208,6 +215,19 @@ class QCWindow : public graphics::Window2d {
     glVertex2i(width(), height());
     glVertex2i(0, height());
     glEnd();
+
+    if (af_adjuster.get() != nullptr) {
+      // TODO(piotrf): this is really a terrible way to disable the shader,
+      // figure out a cleaner way.
+      glUseProgram(0);
+      glDisable(GL_TEXTURE_1D);
+      glPushMatrix();
+      glScalef(width(), height(), 1.0);
+      af_adjuster->Draw();
+      glPopMatrix();
+      glEnable(GL_TEXTURE_1D);
+      glUseProgram(shader_);
+    }
   }
 
   virtual void Resize(int width, int height) {
@@ -221,6 +241,9 @@ class QCWindow : public graphics::Window2d {
   virtual void Keypress(unsigned int key) {
     switch (key) {
       case XK_bracketleft:
+        if (af_adjuster.get() != nullptr) {
+          af_adjuster.reset(nullptr);
+        }
         if (mixv_ > 0.0) {
           mixv_ = -0.01;
         } else if (mixv_ < 0.0) {
@@ -231,6 +254,9 @@ class QCWindow : public graphics::Window2d {
         }
         break;
       case XK_bracketright:
+        if (af_adjuster.get() != nullptr) {
+          af_adjuster.reset(nullptr);
+        }
         if (mixv_ < 0.0) {
           mixv_ = 0.01;
         } else if (mixv_ > 0.0) {
@@ -258,6 +284,41 @@ class QCWindow : public graphics::Window2d {
       case XK_Escape:
         Close();
         break;
+      case XK_a: case XK_A:
+        if (af_adjuster.get() == nullptr) {
+          if (mixv_ == 0.0) {
+            af_adjuster.reset(new ArrayAdjuster(
+                params_.angular_frequencies, params_.num_waves, 0.5));
+          }
+        } else {
+          af_adjuster->SelectLeft();
+        }
+        break;
+      case XK_d: case XK_D:
+        if (af_adjuster.get() == nullptr) {
+          if (mixv_ == 0.0) {
+            af_adjuster.reset(new ArrayAdjuster(
+                params_.angular_frequencies, params_.num_waves, 0.5));
+          }
+        } else {
+          af_adjuster->SelectRight();
+        }
+        break;
+      case XK_w: case XK_W:
+        if (af_adjuster.get() != nullptr) {
+          af_adjuster->Adjust(0.1);
+        }
+        break;
+      case XK_s: case XK_S:
+        if (af_adjuster.get() != nullptr) {
+          af_adjuster->Adjust(-0.1);
+        }
+        break;
+      case XK_q: case XK_Q:
+        if (af_adjuster.get() != nullptr) {
+          af_adjuster->Hide();
+        }
+        break;
       default:
         break;
     }
@@ -269,14 +330,18 @@ class QCWindow : public graphics::Window2d {
   QCShaderParams shader_params_;   // Link between our params and shader.
   bool is_paused_;                 // Is the simulation paused or not?
   float dt_, mixv_;                // Time step, mixing velocity.
+
+  // GUI element for adjusting angular frequencies.
+  std::unique_ptr<ArrayAdjuster> af_adjuster;
 };
 
-}  // namespace
+}  // namespace quasicrystal
 
 int main(int argc, char **argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  QCWindow window(FLAGS_width, FLAGS_height, InitQCParamsFromFlags());
+  quasicrystal::QCWindow window(
+      FLAGS_width, FLAGS_height, quasicrystal::InitQCParamsFromFlags());
   window.Run();
   
   return EXIT_SUCCESS;

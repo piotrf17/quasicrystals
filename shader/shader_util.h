@@ -7,6 +7,8 @@
 
 #include <GL/glew.h>
 
+namespace graphics {
+
 class ShaderUtil {
  public:
   // Given the source of a shader, compile it and link it into a new
@@ -28,5 +30,7 @@ class ShaderUtil {
   // TODO(piotrf): functions for compiling and linking into an existing
   // program.
 };
+
+}  // namespace graphics
 
 #endif

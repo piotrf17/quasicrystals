@@ -3,6 +3,8 @@
 #include <fstream>
 #include <streambuf>
 
+namespace graphics {
+
 namespace {
 
 void GetShaderInfoLog(GLuint shader, std::string* debug) {
@@ -77,3 +79,5 @@ bool ShaderUtil::BuildShaderFromFile(const std::string& filename,
                      std::istreambuf_iterator<char>());
   return BuildShader(source, type, program, debug);
 }
+
+}  // namespace graphics

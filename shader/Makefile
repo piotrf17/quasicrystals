@@ -1,5 +1,5 @@
 PROJECT = quasicrystal
-SOURCES = shader_util.cc window.cc quasicrystal.cc
+SOURCES = array_adjuster.cc shader_util.cc window.cc quasicrystal.cc
 OBJDIR = obj
 
 LIBS = -lgflags -lGL -lX11 -lGLEW
