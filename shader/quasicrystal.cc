@@ -8,7 +8,9 @@
 //   spacebar    pause
 //   a, d        move angular frequency selector left or right
 //   w, s        increase / decrease selected angular frequency
-//   q           close angular frequency selector
+//   j, l        move wavenumber selector left or right
+//   i, k        increase / decrease selected wavenumber
+//   q           close angular frequency or wavenumber selector
 // 
 // Idea based on code by Matthew Peddie:
 // https://github.com/peddie/quasicrystals/
@@ -34,7 +36,11 @@ DEFINE_int32(height, 600, "Height of output image.");
 DEFINE_string(shader_source, "qc.frag",
               "Path to fragment shader source code");
 DEFINE_int32(num_waves, 7, "Initial number of waves, max of 15.");
-DEFINE_double(wavenumber, 0.2, "Initial spatial frequency of waves.");
+DEFINE_string(wavenumbers,
+              "0.2, 0.2, 0.2, 0.2, 0.2,"
+              "0.2, 0.2, 0.2, 0.2, 0.2,"
+              "0.2, 0.2, 0.2, 0.2, 0.2",
+              "Comma seperated list of initial per wave wavenumbers.");
 DEFINE_string(angular_frequencies,
               "1.0, 0.9, 0.8, 0.7, 0.6,"
               "0.5, 0.4, 0.3, 0.2, 0.1,"
@@ -57,7 +63,7 @@ struct QCParams {
         num_waves(1),
         mix(0.0),
         angular_frequencies({1.0}),
-        wavenumber(0.2) {}
+        wavenumbers({0.2}) {}
   // Current time in the wave propagation.
   float t;
   // Number of waves.
@@ -66,23 +72,27 @@ struct QCParams {
   float mix;
   // Angular frequencies of each wave, individually specified.
   float angular_frequencies[kMaxNumWaves];
-  // Spatial frequency of all of the waves.
-  // TODO(piotrf): specify per wave wavenumbers.
-  float wavenumber;
+  // Spatial frequency of each wave, individually specified.
+  float wavenumbers[kMaxNumWaves];
 };
+
+void SplitCommaSeparatedFloats(const std::string& str, float* v, int size) {
+  std::stringstream ss(str);
+  std::string temp;
+  int i = 0;
+  while (std::getline(ss, temp, ',') && i < size) {
+    v[i] = atof(temp.c_str());
+    ++i;
+  }
+}
 
 QCParams InitQCParamsFromFlags() {
   QCParams params;
   params.num_waves = std::max(std::min(FLAGS_num_waves, kMaxNumWaves), 1);
-  params.wavenumber = FLAGS_wavenumber;
-  // Split comma seperated string into floats.  I should just use boost...
-  std::stringstream ss(FLAGS_angular_frequencies);
-  std::string phase_str;
-  int i = 0;
-  while (std::getline(ss, phase_str, ',') && i < kMaxNumWaves) {
-    params.angular_frequencies[i] = atof(phase_str.c_str());
-    ++i;
-  }
+  SplitCommaSeparatedFloats(
+      FLAGS_angular_frequencies, params.angular_frequencies, kMaxNumWaves);
+  SplitCommaSeparatedFloats(
+      FLAGS_wavenumbers, params.wavenumbers, kMaxNumWaves);
   return params;
 }
 
@@ -96,21 +106,22 @@ class QCShaderParams {
   void Init(GLuint shader) {
     shader_ = shader;
     // The vector of angular frequencies is passed as a texture.
-    glEnable(GL_TEXTURE_1D);
     glGenTextures(1, &angular_frequencies_texture_);
     glBindTexture(GL_TEXTURE_1D, angular_frequencies_texture_);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage1D(GL_TEXTURE_1D,
-                 0,             // LOD level, 0 = base image
-                 GL_R32F,       // packing type
-                 kMaxNumWaves,  // size
-                 0,             // border
-                 GL_RED,        // pixel data format
-                 GL_FLOAT,      // pixel data type
-                 params_->angular_frequencies);
-  
+    glTexImage1D(GL_TEXTURE_1D, 0, GL_R32F, kMaxNumWaves,
+                 0, GL_RED, GL_FLOAT, params_->angular_frequencies);
     // I think this should setup sampling to be close enough to selecting
     // values from the array.  I haven't thoroughly tested.
+    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    // The vector of wavenumbers is also passed as a texture.
+    glGenTextures(1, &wavenumbers_texture_);
+    glBindTexture(GL_TEXTURE_1D, wavenumbers_texture_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage1D(GL_TEXTURE_1D, 0, GL_R32F, kMaxNumWaves,
+                 0, GL_RED, GL_FLOAT, params_->wavenumbers);
     glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameterf(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -132,8 +143,13 @@ class QCShaderParams {
     glBindTexture(GL_TEXTURE_1D, angular_frequencies_texture_);
     glTexSubImage1D(GL_TEXTURE_1D, 0, 0, kMaxNumWaves, GL_RED, GL_FLOAT,
                     params_->angular_frequencies);
-    GLint wavenumber_loc = glGetUniformLocation(shader_, "wavenumber");
-    glUniform1f(wavenumber_loc, params_->wavenumber);
+    GLint wavenumbers_loc =
+        glGetUniformLocation(shader_, "wavenumbers");
+    glUniform1i(wavenumbers_loc, 1);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_1D, wavenumbers_texture_);
+    glTexSubImage1D(GL_TEXTURE_1D, 0, 0, kMaxNumWaves, GL_RED, GL_FLOAT,
+    params_->wavenumbers);
   }
   
   void set_shader(GLuint shader) {shader_ = shader;}
@@ -142,6 +158,7 @@ class QCShaderParams {
   const QCParams* params_;
   GLuint shader_;
   GLuint angular_frequencies_texture_;
+  GLuint wavenumbers_texture_;
 };
 
 class QCWindow : public graphics::Window2d {
@@ -158,6 +175,8 @@ class QCWindow : public graphics::Window2d {
       return false;
     }
 
+    glEnable(GL_TEXTURE_1D);
+    
     // Initialize glew and compile our shaders.
     glewInit();
     if (glewIsSupported("GL_VERSION_2_0")) {
@@ -181,7 +200,7 @@ class QCWindow : public graphics::Window2d {
     is_paused_ = false;
     dt_ = 5 * FLAGS_time_granularity;
     mixv_ = 0.0;
-
+    
     return true;
   }
   
@@ -216,16 +235,28 @@ class QCWindow : public graphics::Window2d {
     glVertex2i(0, height());
     glEnd();
 
-    if (af_adjuster.get() != nullptr) {
+    if (af_adjuster.get() != nullptr || wn_adjuster.get() != nullptr) {
       // TODO(piotrf): this is really a terrible way to disable the shader,
       // figure out a cleaner way.
       glUseProgram(0);
+      // Disable textures so that we can just draw with colors.
+      glActiveTexture(GL_TEXTURE0);
+      glDisable(GL_TEXTURE_1D);
+      glActiveTexture(GL_TEXTURE1);
       glDisable(GL_TEXTURE_1D);
       glPushMatrix();
       glScalef(width(), height(), 1.0);
-      af_adjuster->Draw();
+      if (af_adjuster.get() != nullptr) {
+        af_adjuster->Draw();
+      } else if (wn_adjuster.get() != nullptr) {
+        wn_adjuster->Draw();
+      }
       glPopMatrix();
-      glEnable(GL_TEXTURE_1D);
+      // Re-enable textures so that we can just draw with colors.
+      glActiveTexture(GL_TEXTURE0);
+      glDisable(GL_TEXTURE_1D);
+      glActiveTexture(GL_TEXTURE1);
+      glDisable(GL_TEXTURE_1D);
       glUseProgram(shader_);
     }
   }
@@ -244,6 +275,9 @@ class QCWindow : public graphics::Window2d {
         if (af_adjuster.get() != nullptr) {
           af_adjuster.reset(nullptr);
         }
+        if (wn_adjuster.get() != nullptr) {
+          wn_adjuster.reset(nullptr);
+        }
         if (mixv_ > 0.0) {
           mixv_ = -0.01;
         } else if (mixv_ < 0.0) {
@@ -256,6 +290,9 @@ class QCWindow : public graphics::Window2d {
       case XK_bracketright:
         if (af_adjuster.get() != nullptr) {
           af_adjuster.reset(nullptr);
+        }
+        if (wn_adjuster.get() != nullptr) {
+          wn_adjuster.reset(nullptr);
         }
         if (mixv_ < 0.0) {
           mixv_ = 0.01;
@@ -276,17 +313,23 @@ class QCWindow : public graphics::Window2d {
         is_paused_ = !is_paused_;
         break;
       case XK_minus:
-        params_.wavenumber *= 1.1;
+        for (int i = 0; i < kMaxNumWaves; ++i) {
+          params_.wavenumbers[i] *= 1.1;
+        }
         break;
       case XK_equal:
-        params_.wavenumber /= 1.1;
+        for (int i = 0; i < kMaxNumWaves; ++i) {
+          params_.wavenumbers[i] /= 1.1;
+        }
         break;
       case XK_Escape:
         Close();
         break;
       case XK_a: case XK_A:
         if (af_adjuster.get() == nullptr) {
-          if (mixv_ == 0.0) {
+          if (mixv_ == 0.0 &&
+              (wn_adjuster.get() == nullptr || wn_adjuster->hidden())) {
+            wn_adjuster.reset();
             af_adjuster.reset(new ArrayAdjuster(
                 params_.angular_frequencies, params_.num_waves, 0.5));
           }
@@ -294,9 +337,12 @@ class QCWindow : public graphics::Window2d {
           af_adjuster->SelectLeft();
         }
         break;
+      // Angular frequency adjuster controls.
       case XK_d: case XK_D:
         if (af_adjuster.get() == nullptr) {
-          if (mixv_ == 0.0) {
+          if (mixv_ == 0.0 &&
+              (wn_adjuster.get() == nullptr || wn_adjuster->hidden())) {
+            wn_adjuster.reset();
             af_adjuster.reset(new ArrayAdjuster(
                 params_.angular_frequencies, params_.num_waves, 0.5));
           }
@@ -314,9 +360,46 @@ class QCWindow : public graphics::Window2d {
           af_adjuster->Adjust(-0.1);
         }
         break;
+      // Wavenumber adjuster controls.
+      case XK_j: case XK_J:
+        if (wn_adjuster.get() == nullptr) {
+          if (mixv_ == 0.0 &&
+              (af_adjuster.get() == nullptr || af_adjuster->hidden())) {
+            af_adjuster.reset();
+            wn_adjuster.reset(new ArrayAdjuster(
+                params_.wavenumbers, params_.num_waves, 0.5));
+          }
+        } else {
+          wn_adjuster->SelectLeft();
+        }
+        break;
+      case XK_l: case XK_L:
+        if (wn_adjuster.get() == nullptr) {
+          if (mixv_ == 0.0 &&
+              (af_adjuster.get() == nullptr || af_adjuster->hidden())) {
+            af_adjuster.reset();
+            wn_adjuster.reset(new ArrayAdjuster(
+                params_.wavenumbers, params_.num_waves, 0.5));
+          }
+        } else {
+          wn_adjuster->SelectRight();
+        }
+        break;
+      case XK_i: case XK_I:
+        if (wn_adjuster.get() != nullptr) {
+          wn_adjuster->Adjust(0.1);
+        }
+        break;
+      case XK_k: case XK_K:
+        if (wn_adjuster.get() != nullptr) {
+          wn_adjuster->Adjust(-0.1);
+        }
+        break;
       case XK_q: case XK_Q:
         if (af_adjuster.get() != nullptr) {
           af_adjuster->Hide();
+        } else if (wn_adjuster.get() != nullptr) {
+          wn_adjuster->Hide();
         }
         break;
       default:
@@ -333,6 +416,8 @@ class QCWindow : public graphics::Window2d {
 
   // GUI element for adjusting angular frequencies.
   std::unique_ptr<ArrayAdjuster> af_adjuster;
+  // GUI element for adjutsing wavenumbers.
+  std::unique_ptr<ArrayAdjuster> wn_adjuster;
 };
 
 }  // namespace quasicrystal

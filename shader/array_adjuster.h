@@ -32,6 +32,8 @@ class ArrayAdjuster {
   // Later calls to draw won't show anything.  However, any call to
   // Select{Left,Right} or Adjust will unhide the array adjuster.
   void Hide();
+
+  bool hidden() const { return hidden_; }
   
  private:
   float* v_;

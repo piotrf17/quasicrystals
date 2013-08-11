@@ -9,7 +9,7 @@ uniform float t;             // time
 uniform int num_waves;       // number of waves
 uniform float mix;           // mixing parameter for changing num_waves
 uniform sampler1D angular_frequencies;  // per wave angular frequencies
-uniform float wavenumber;  // spatial frequency of all the waves
+uniform sampler1D wavenumbers;  // per wave wavenumbers
 
 uniform vec2 resolution;     // screen resolution
 
@@ -48,13 +48,26 @@ void main() {
     	 	                (float(w) + 0.5) / float(kMaxNumWaves));
     mixed_angular_freq[w] = ((1.0 - mix) * phase_vec0.r + mix * phase_vec1.r);
   }
-  
+
+  // Mixing together wavenumbers.
+  float mixed_wavenumbers[kMaxNumWaves];
+  vec4 wn_vec = texture1D(wavenumbers,
+                          (float(0.0) + 0.5) / float(kMaxNumWaves));
+  mixed_wavenumbers[0] = wn_vec.r;
+  for (int w = 1; w < num_waves + 1; ++w) {
+    vec4 wn_vec0 = texture1D(wavenumbers,
+    	                     (float(w - 1) + 0.5) / float(kMaxNumWaves));
+    vec4 wn_vec1 = texture1D(wavenumbers, 
+    	                     (float(w) + 0.5) / float(kMaxNumWaves));
+    mixed_wavenumbers[w] = ((1.0 - mix) * wn_vec0.r + mix * wn_vec1.r);
+  }
+
   // Compute intensity over the sum of waves.
   float p = 0.0;
   for (int w = 0; w < num_waves + 1; ++w) {
     float cx = coses[w] * x;
     float sy = sines[w] * y;
-    p += weights[w] * 0.5 * (cos(wavenumber * (cx + sy) + 
+    p += weights[w] * 0.5 * (cos(mixed_wavenumbers[w] * (cx + sy) + 
                                  mixed_angular_freq[w] * t)
 			      + 1.0);
   }
